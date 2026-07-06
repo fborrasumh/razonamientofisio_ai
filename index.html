@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="es">
+<!--
+════════════════════════════════════════════════════════════════════════
+  RazonamientoFisio·AI  ·  VARIANTE Fisioterapia  ·  fork plantilla-base
+  Tutor socrático de razonamiento clínico fisioterápico:
+  1) Cribado de banderas rojas (OBLIGATORIO y previo — bloqueo de estado).
+  2) Fuente de síntomas (nociceptiva articular/muscular · neuropática ·
+     nociplástica · discal · visceral).
+  3) Factores contribuyentes (biomecánicos · psicosociales · laborales…).
+  4) Hipótesis de tratamiento.
+  Tests ortopédicos: deterministas (enrutador → verbatim del caso).
+  Reutiliza kernel: openai/agente · dlWord/dlPDF · banner/busy · saveState.
+  Agentes: Generador de caso · Tutor (respuesta + árbol) · Tests · Debrief.
+════════════════════════════════════════════════════════════════════════
+-->
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RazonamientoFisio·AI · Razonamiento clínico en Fisioterapia</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Libre+Franklin:wght@500;600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/docx/8.5.0/docx.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+<style>
+  :root{
+    --paper:#EAF0EF;--card:#FFFFFF;--ink:#16292E;--muted:#5C7076;
+    --petrol:#0E4B54;--petrol-deep:#0A363D;--petrol-soft:#E3EDEC;
+    --line:#CEDAD8;--amber:#D98A00;--green:#1E9E8A;--coral:#D9573F;
+    --radius:14px;--shadow:0 1px 2px rgba(10,54,61,.06),0 8px 24px rgba(10,54,61,.06);
+  }
+  *{box-sizing:border-box}html,body{margin:0;padding:0}
+  body{font-family:'Inter',system-ui,sans-serif;color:var(--ink);background:var(--paper);line-height:1.5;-webkit-font-smoothing:antialiased}
+  h1,h2,h3,h4{font-family:'Libre Franklin',sans-serif;margin:0;letter-spacing:-.01em}
+  .mono{font-family:'JetBrains Mono',monospace}
+  button{font-family:inherit;cursor:pointer;border:none;background:none}
+  input,select,textarea{font-family:inherit;font-size:14px}
+  @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+  header{background:var(--petrol-deep);color:#EAF0EF;position:sticky;top:0;z-index:20;border-bottom:1px solid #0a2a30}
+  .bar{max-width:1240px;margin:0 auto;padding:12px 20px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+  .brand{display:flex;align-items:baseline;gap:10px}
+  .brand .logo{font-family:'Libre Franklin';font-weight:800;font-size:19px;letter-spacing:-.02em;color:#fff}
+  .brand .logo b{color:var(--amber)}
+  .brand .tag{font-size:11px;color:#8FB3B2;letter-spacing:.14em;text-transform:uppercase}
+
+  main{max-width:1240px;margin:0 auto;padding:22px 20px 60px;display:grid;grid-template-columns:1fr 340px;gap:22px}
+  @media(max-width:920px){main{grid-template-columns:1fr;padding:16px}}
+  .col-side{display:flex;flex-direction:column;gap:16px}
+  @media(max-width:920px){.col-side{order:-1}}
+
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);margin-bottom:22px}
+  .panel:last-child{margin-bottom:0}
+  .panel-h{padding:13px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+  .panel-h h3{font-size:14px;font-weight:700}
+  .panel-h .eyebrow{font-family:'JetBrains Mono';font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted)}
+  .panel-b{padding:18px}
+
+  .field{margin-bottom:14px}.field:last-child{margin-bottom:0}
+  label.lab{display:block;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:600;margin-bottom:6px}
+  .inp{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:9px;background:#FBFCFC;color:var(--ink)}
+  .inp:focus{outline:2px solid var(--petrol);outline-offset:-1px;border-color:var(--petrol)}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  @media(max-width:520px){.row2{grid-template-columns:1fr}}
+  .hint{font-size:12px;color:var(--muted);margin-top:6px}
+
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:11px 16px;border-radius:10px;font-weight:600;font-size:14px;transition:.15s}
+  .btn-primary{background:var(--petrol);color:#fff}.btn-primary:hover{background:var(--petrol-deep)}
+  .btn-primary:disabled{background:#9DB4B3;cursor:not-allowed}
+  .btn-amber{background:var(--amber);color:#2b1c00}.btn-amber:hover{filter:brightness(.95)}
+  .btn-ghost{background:var(--petrol-soft);color:var(--petrol)}.btn-ghost:hover{background:#d3e3e1}
+  .btn-line{border:1px solid var(--line);background:#fff;color:var(--ink);font-weight:500;font-size:13px;padding:9px 12px}
+  .btn-line:hover{border-color:var(--petrol);color:var(--petrol)}
+  .btn-block{width:100%} .toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px}
+
+  .banner{border-radius:10px;padding:11px 14px;font-size:13px;margin-bottom:14px;display:none}
+  .banner.err{background:#FBE7E2;border:1px solid #E7B4A8;color:#9a2f1a}
+  .banner.info{background:#FFF3D6;border:1px solid #F0D89A;color:#5c4600}
+  .banner.ok{background:#DFF1ED;border:1px solid #A9D8CF;color:#0e6a5c}
+  .spin{width:15px;height:15px;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;animation:sp .7s linear infinite;display:inline-block}
+  @keyframes sp{to{transform:rotate(360deg)}}
+  .foot{max-width:1240px;margin:0 auto;padding:8px 20px 40px;color:var(--muted);font-size:12px}
+  .foot code{font-family:'JetBrains Mono';font-size:11px}
+
+  /* Alert BR */
+  .br-alert{background:#FBE7E2;border:1px solid #E7B4A8;border-radius:10px;padding:10px 13px;font-size:13px;color:#9a2f1a;margin-bottom:10px;display:none}
+  .br-ok{background:#DFF1ED;border:1px solid #A9D8CF;border-radius:10px;padding:10px 13px;font-size:13px;color:#0e6a5c;margin-bottom:10px;display:none}
+
+  /* Viñeta */
+  .present{background:var(--petrol-soft);border:1px solid #bcd6d3;border-radius:12px;padding:14px 16px;margin:14px 18px 0;font-size:14.5px;white-space:pre-wrap}
+  .present h4{font-family:'JetBrains Mono';font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--petrol);margin-bottom:6px}
+
+  /* Chat */
+  #chat{padding:18px;display:flex;flex-direction:column;gap:14px;overflow-y:auto;max-height:50vh}
+  .msg{max-width:84%;padding:11px 14px;border-radius:14px;font-size:14.5px;white-space:pre-wrap;word-wrap:break-word}
+  .msg.alumno{align-self:flex-end;background:var(--petrol);color:#fff;border-bottom-right-radius:4px}
+  .msg.tutor{align-self:flex-start;background:#F1F5F4;border:1px solid var(--line);border-bottom-left-radius:4px}
+  .msg .who{font-size:10px;letter-spacing:.1em;text-transform:uppercase;font-weight:700;opacity:.6;margin-bottom:4px;font-family:'JetBrains Mono'}
+  .msg.data{align-self:stretch;max-width:100%;background:#FFF9EC;border:1px solid #F0D89A;color:#5c4600;font-family:'JetBrains Mono';font-size:13px}
+  .msg.data .who{color:var(--amber);opacity:1}
+  .msg.sys{align-self:center;font-size:12px;color:var(--muted);background:transparent;text-align:center;max-width:100%}
+  .msg.br-msg{align-self:stretch;max-width:100%;background:#FBE7E2;border:1px solid #E7B4A8;color:#9a2f1a;border-radius:10px;padding:10px 13px;font-size:13.5px}
+  .msg.br-msg .who{color:var(--coral);opacity:1}
+  .typing{align-self:flex-start;color:var(--muted);font-size:13px;padding:6px 14px;display:flex;gap:5px;align-items:center}
+  .typing .dot{width:6px;height:6px;background:var(--petrol);border-radius:50%;animation:bl 1.2s infinite}
+  .typing .dot:nth-child(2){animation-delay:.2s}.typing .dot:nth-child(3){animation-delay:.4s}
+  @keyframes bl{0%,60%,100%{opacity:.25}30%{opacity:1}}
+  .actions{display:flex;flex-wrap:wrap;gap:8px;padding:12px 14px;border-top:1px solid var(--line);background:#F7FAFA}
+  .actions .btn-line{flex:1;min-width:110px}
+  #composer{border-top:1px solid var(--line);padding:12px 14px;display:flex;gap:9px;align-items:flex-end}
+  #inp{flex:1;resize:none;min-height:44px;max-height:130px;padding:11px 13px;border:1px solid var(--line);border-radius:11px;background:#FBFCFC}
+  #inp:focus{outline:2px solid var(--petrol);outline-offset:-1px;border-color:var(--petrol)}
+
+  /* Árbol de razonamiento */
+  .arbol{padding:2px 0}
+  .nodo{margin-bottom:12px}
+  .nodo .nh{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+  .nodo .nic{font-size:16px;line-height:1}
+  .nodo .nlbl{font-family:'JetBrains Mono';font-size:10px;letter-spacing:.12em;text-transform:uppercase;font-weight:700}
+  .nodo .nlbl.pending{color:var(--muted)}
+  .nodo .nlbl.done{color:var(--green)}
+  .nodo .nlbl.alert{color:var(--coral)}
+  .nodo .nval{font-size:13.5px;color:var(--muted);padding-left:24px}
+  .nodo .br-chip{display:inline-block;font-size:11.5px;font-weight:700;padding:3px 9px;border-radius:20px;margin:2px 4px 2px 0}
+  .br-chip.positiva{background:#FBE7E2;color:#9a2f1a}
+  .br-chip.negativa{background:#DFF1ED;color:#0e6a5c}
+  .fuente-item{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #EEF2F1;font-size:13.5px}
+  .fuente-item .dot{flex:none;width:8px;height:8px;border-radius:50%}
+  .fuente-item.activa .dot{background:var(--petrol)}
+  .fuente-item.probable .dot{background:var(--amber)}
+  .fuente-item.improbable .dot{background:var(--line)}
+  .fuente-item .fn{font-weight:600}.fuente-item .fp{font-size:11px;font-family:'JetBrains Mono';color:var(--muted);margin-left:auto}
+  .htto{font-size:13.5px;background:var(--petrol-soft);border-radius:8px;padding:8px 10px;color:var(--petrol);font-weight:500}
+
+  /* Debrief */
+  .reveal{border:1px solid var(--line);border-radius:12px;padding:16px 18px}
+  .reveal .dx{font-family:'Libre Franklin';font-weight:800;font-size:18px;color:var(--petrol);margin:2px 0 4px}
+  .sub{font-family:'JetBrains Mono';font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--amber);font-weight:700;margin:14px 0 7px}
+  .reveal ul{margin:0;padding-left:18px;font-size:14px}.reveal li{margin-bottom:4px}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="bar">
+    <div class="brand"><span class="logo">Razonamiento<b>Fisio</b>·AI</span><span class="tag">Tutor socrático · Fisioterapia</span></div>
+  </div>
+</header>
+
+<main>
+  <div class="col-main">
+    <!-- SETUP -->
+    <section class="panel" id="setupPanel">
+      <div class="panel-h"><span class="eyebrow">Config</span><h3>Preparar caso</h3></div>
+      <div class="panel-b">
+        <div id="banner" class="banner"></div>
+        <div class="row2">
+          <div class="field"><label class="lab">Área clínica</label>
+            <select class="inp" id="area">
+              <option value="Musculoesquelética">Musculoesquelética</option>
+              <option value="Neurológica" >Neurológica</option>
+              <option value="Cardiorrespiratoria">Cardiorrespiratoria</option>
+              <option value="Deportiva">Deportiva</option>
+              <option value="Geriátrica">Geriátrica</option>
+              <option value="Suelo pélvico">Suelo pélvico</option>
+            </select></div>
+          <div class="field"><label class="lab">Nivel</label>
+            <select class="inp" id="nivel">
+              <option value="grado">Grado</option>
+              <option value="avanzado" selected>Avanzado / OPE</option>
+              <option value="experto">Clínico experto</option>
+            </select></div>
+        </div>
+        <div class="field"><label class="lab">Región / síndrome <span style="text-transform:none;font-weight:400">(opcional)</span></label>
+          <input class="inp" id="region" placeholder="p. ej. hombro, lumbalgia, rodilla del corredor…"></div>
+        <div class="field">
+          <label style="display:flex;align-items:center;gap:8px;font-size:13.5px;color:var(--muted)">
+            <input type="checkbox" id="inclBR" checked> Incluir posible bandera roja (aleatoriamente)
+          </label>
+          <div class="hint">Actívalo para entrenar el cribado en casos con y sin señales de alarma.</div>
+        </div>
+        <button class="btn btn-primary btn-block" id="genBtn">Generar caso e iniciar tutoría</button>
+        <details style="margin-top:12px"><summary style="font-size:12px;color:var(--muted);cursor:pointer;font-weight:600">Ajustes avanzados (API)</summary>
+          <div class="row2" style="margin-top:12px">
+            <div class="field"><label class="lab">OpenAI API Key</label><input class="inp" id="apiKey" type="password" placeholder="sk-…" autocomplete="off"><div class="hint">Solo en tu navegador. Compartida entre las apps.</div></div>
+            <div class="field"><label class="lab">Modelo</label><select class="inp" id="model"><option value="gpt-4o-mini" selected>gpt-4o-mini</option><option value="gpt-4o">gpt-4o</option><option value="gpt-4.1-mini">gpt-4.1-mini</option></select></div>
+          </div></details>
+      </div>
+    </section>
+
+    <!-- TUTORÍA -->
+    <section class="panel" id="casePanel" style="display:none">
+      <div class="panel-h"><span class="eyebrow">Tutoría</span><h3 id="caseTitle">Caso</h3>
+        <button class="btn btn-line" id="resetBtn" style="margin-left:auto">Nuevo caso</button></div>
+      <div class="present" id="present"></div>
+      <div id="brAlert" class="br-alert" style="margin:10px 18px 0">⚠ El alumno no ha cribado banderas rojas. El tutor redirigirá.</div>
+      <div id="brOk" class="br-ok" style="margin:10px 18px 0">✓ Banderas rojas cribadas. Puedes avanzar al razonamiento de tratamiento.</div>
+      <div id="chat"></div>
+      <div class="actions">
+        <button class="btn-line btn" id="testBtn">🔎 Solicitar test / exploración</button>
+        <button class="btn-line btn" id="brBtn">🚩 Cribar banderas rojas</button>
+        <button class="btn-amber btn" id="closeBtn">Cerrar caso →</button>
+      </div>
+      <div id="composer">
+        <textarea id="inp" placeholder="Razona, propón hipótesis, pide aclaraciones…  (Enter para enviar)"></textarea>
+        <button class="btn btn-primary" id="send">Enviar</button>
+      </div>
+    </section>
+
+    <!-- DEBRIEF -->
+    <section class="panel" id="debriefPanel" style="display:none">
+      <div class="panel-h"><span class="eyebrow">Debrief</span><h3>Razonamiento revelado</h3></div>
+      <div class="panel-b" id="debriefBody"></div>
+    </section>
+  </div>
+
+  <!-- LATERAL: árbol -->
+  <div class="col-side">
+    <div class="panel">
+      <div class="panel-h"><span class="eyebrow">Árbol</span><h3>Razonamiento clínico</h3></div>
+      <div class="panel-b arbol" id="arbolBox">
+        <div style="color:var(--muted);font-size:13px">El árbol se construirá aquí a medida que avances.</div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-h"><span class="eyebrow">Guía</span><h3>El proceso</h3></div>
+      <div class="panel-b" style="font-size:13.5px;color:var(--muted)">
+        <p style="margin:0 0 9px"><b style="color:var(--coral)">1. Banderas rojas</b> — críbalas SIEMPRE antes de razonar el tratamiento. El tutor no avanzará si las omites.</p>
+        <p style="margin:0 0 9px"><b style="color:var(--amber)">2. Fuente de síntomas</b> — articular, muscular, neural, discal, visceral, nociplástica.</p>
+        <p style="margin:0 0 9px"><b style="color:var(--petrol)">3. Factores contribuyentes</b> — biomecánicos, psicosociales, laborales, deportivos…</p>
+        <p style="margin:0"><b style="color:var(--green)">4. Hipótesis de tratamiento</b> — solo cuando lo anterior esté razonado.</p>
+      </div>
+    </div>
+  </div>
+</main>
+
+<div class="foot">RazonamientoFisio·AI — variante del portfolio · tutor socrático · <code>vanilla HTML/JS · OpenAI · docx.js · jsPDF</code> · herramienta formativa</div>
+
+<script>
+/* ═══ KERNEL ═══ */
+const $=s=>document.querySelector(s);
+const el=(t,c)=>{const e=document.createElement(t);if(c)e.className=c;return e;};
+const APP={id:'razonafisio',version:1};
+const K_KEY='ia_openai_key',K_MODEL='ia_openai_model',K_STATE=APP.id+':state';
+function loadCfg(){ $('#apiKey').value=localStorage.getItem(K_KEY)||''; const m=localStorage.getItem(K_MODEL); if(m)$('#model').value=m; }
+function saveCfg(){ localStorage.setItem(K_KEY,$('#apiKey').value.trim()); localStorage.setItem(K_MODEL,$('#model').value); }
+async function openai(messages,{json=false,temperature=0.6}={}){
+  const key=$('#apiKey').value.trim(); if(!key) throw new Error('NO_KEY');
+  const body={model:$('#model').value,messages,temperature}; if(json) body.response_format={type:'json_object'};
+  const r=await fetch('https://api.openai.com/v1/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},body:JSON.stringify(body)});
+  if(!r.ok){ const t=await r.text(); if(r.status===401) throw new Error('BAD_KEY'); throw new Error('API '+r.status+': '+t.slice(0,180)); }
+  return (await r.json()).choices[0].message.content;
+}
+async function agente(system,user,{json=false,temperature=0.6}={}){ const out=await openai([{role:'system',content:system},{role:'user',content:String(user)}],{json,temperature}); return json?JSON.parse(out):out; }
+function banner(msg,type='info'){ const b=$('#banner'); b.className='banner '+type; b.textContent=msg; b.style.display=msg?'block':'none'; }
+function busy(btn,on,label){ if(on){ btn.dataset.old=btn.innerHTML; btn.disabled=true; btn.innerHTML='<span class="spin"></span> '+(label||'…'); } else { btn.disabled=false; btn.innerHTML=btn.dataset.old||btn.innerHTML; } }
+function handleErr(e){ console.error(e);
+  if(e.message==='NO_KEY') banner('Introduce tu OpenAI API Key en «Ajustes avanzados (API)».','err');
+  else if(e.message==='BAD_KEY') banner('API Key no válida (401).','err');
+  else if(e instanceof SyntaxError){ pushMsg('sys','⚠ Formato inesperado. Reintenta.',{save:false}); }
+  else banner('⚠ '+e.message,'err'); }
+function saveState(o){ try{ localStorage.setItem(K_STATE,JSON.stringify({v:APP.version,data:o})); }catch(e){} }
+function loadState(){ try{ const s=JSON.parse(localStorage.getItem(K_STATE)); if(s&&s.v===APP.version) return s.data; localStorage.removeItem(K_STATE);}catch(e){} return null; }
+async function dlWord(filename,blocks){
+  const {Document,Packer,Paragraph,TextRun,HeadingLevel}=docx;
+  const P=(t,o={})=>new Paragraph({children:[new TextRun({text:String(t),...o})],spacing:{after:120}}); const ch=[];
+  blocks.forEach(b=>{ if(b.h1)ch.push(new Paragraph({text:b.h1,heading:HeadingLevel.HEADING_1}));
+    else if(b.h2)ch.push(new Paragraph({text:b.h2,heading:HeadingLevel.HEADING_2}));
+    else if(b.h3)ch.push(new Paragraph({text:b.h3,heading:HeadingLevel.HEADING_3}));
+    else if(b.p!==undefined)ch.push(P(b.p,b.opts||{}));
+    else if(b.bullets)b.bullets.forEach(x=>ch.push(new Paragraph({text:String(x),bullet:{level:0}})));
+    else if(b.kv)b.kv.forEach(([k,v])=>ch.push(new Paragraph({children:[new TextRun({text:k+': ',bold:true}),new TextRun({text:String(v)})],spacing:{after:80}})));
+    else if(b.spacer)ch.push(P('')); });
+  saveAs(await Packer.toBlob(new Document({sections:[{children:ch}]})),filename.endsWith('.docx')?filename:filename+'.docx');
+}
+function dlPDF(filename,blocks){
+  const {jsPDF}=window.jspdf; const doc=new jsPDF({unit:'pt',format:'a4'}); const W=595,M=48; let y=56; const ink=[22,41,46],petrol=[14,75,84],muted=[92,112,118];
+  const line=(txt,size,style,color,gap)=>{ doc.setFont('helvetica',style||'normal'); doc.setFontSize(size||11); doc.setTextColor(...(color||ink));
+    doc.splitTextToSize(String(txt),W-M*2).forEach(l=>{ if(y>800){doc.addPage();y=56;} doc.text(l,M,y); y+=(size||11)*1.35; }); if(gap)y+=gap; };
+  doc.setFillColor(14,75,84); doc.rect(0,0,W,30,'F');
+  blocks.forEach(b=>{ if(b.h1)line(b.h1,17,'bold',petrol,4); else if(b.h2)line(b.h2,14,'bold',petrol,3); else if(b.h3)line(b.h3,12,'bold',ink,2);
+    else if(b.p!==undefined)line(b.p,11,'normal',ink,2); else if(b.bullets)b.bullets.forEach(x=>line('•  '+x,11,'normal',muted,1));
+    else if(b.kv)b.kv.forEach(([k,v])=>line(k+': '+v,11,'normal',ink,1)); else if(b.spacer)y+=8; });
+  doc.save(filename.endsWith('.pdf')?filename:filename+'.pdf');
+}
+
+/* ═══ APP ═══ */
+let ST={ caso:null, dialogo:[], arbol:null, br_cribadas:false, running:false, cache:{}, cerrado:false, final:'' };
+
+/* ── AGENTE · Generador de caso fisioterápico ── */
+async function generarCaso(){
+  const area=$('#area').value; const nivel=$('#nivel').value; const region=$('#region').value.trim();
+  const inclBR=$('#inclBR').checked;
+  const nivelTxt={grado:'estudiante de grado',avanzado:'fisioterapeuta avanzado u opositor OPE',experto:'fisioterapeuta clínico experto'}[nivel];
+  const sys=`Eres generador de casos para entrenar el razonamiento clínico en Fisioterapia. Área: ${area}. ${region?`Región/síndrome: ${region}.`:''} Nivel: ${nivelTxt}.
+${inclBR?'El caso PUEDE incluir (decisión tuya) una bandera roja o bandera amarilla para que el alumno la cribe.':'El caso NO incluye banderas rojas (caso benigno).'}
+Devuelve SOLO JSON:
+{"titulo":"título breve",
+ "presentacion":"anamnesis detallada: motivo, localización, comportamiento del dolor/síntoma, agravantes/aliviantes, historia, impacto funcional, antecedentes relevantes. SIN indicar la hipótesis diagnóstica",
+ "banderas_rojas":[{"signo":"…","presente":true|false}],
+ "banderas_amarillas":[{"factor":"factor psicosocial relevante presente en el caso"}],
+ "tests":[{"nombre":"test ortopédico o neurológico con resultado","resultado":"hallazgo"}],
+ "hipotesis_fisio":"hipótesis de fuente de síntomas y razonamiento esperado",
+ "fuentes_probables":["fuente principal","fuente alternativa"],
+ "factores_contribuyentes":["factor 1","factor 2"],
+ "plan_esperado":"enfoque de tratamiento esperado",
+ "puntos_ensenanza":["clave 1","clave 2"]}
+Incluye 4-8 tests relevantes. Coherencia clínica total.`;
+  return await agente(sys,'Genera el caso.',{json:true,temperature:0.85});
+}
+
+/* ── AGENTE · Tutor socrático ── */
+async function tutorTurn(){
+  const c=ST.caso; const br_ok=ST.br_cribadas;
+  const sys=`Eres un TUTOR CLÍNICO socrático de razonamiento en Fisioterapia. Guías SIN revelar la hipótesis.
+Caso (solo tú lo conoces):
+- Presentación: ${c.presentacion}
+- Banderas rojas: ${JSON.stringify(c.banderas_rojas)} — presentes: ${c.banderas_rojas&&c.banderas_rojas.some(b=>b.presente)?'SÍ (¡importante!)':'NO'}
+- Banderas amarillas: ${JSON.stringify(c.banderas_amarillas)}
+- Hipótesis fisioterápica correcta (NO revelar): ${c.hipotesis_fisio}
+- Fuentes probables: ${(c.fuentes_probables||[]).join('; ')}
+- Factores contribuyentes: ${(c.factores_contribuyentes||[]).join('; ')}
+- Tests disponibles: ${JSON.stringify(c.tests)}
+- Plan esperado (NO revelar): ${c.plan_esperado}
+BANDERAS ROJAS CRIBADAS POR EL ALUMNO: ${br_ok?'SÍ':'NO — si el alumno avanza sin cribarlas, REDIRIGE SIEMPRE hacia el cribado antes de razonar el tratamiento. Esto es prioritario sobre cualquier otra respuesta.'}
+REGLAS:
+- Nunca des la hipótesis ni confirmes/niegues directamente. Usa preguntas socráticas.
+- Si el alumno no ha cribado BRs, redirige siempre a ello primero.
+- Si hay BRs presentes, guía al alumno para que las identifique y razone la derivación.
+- Guía el razonamiento en este orden: BRs → fuente de síntomas → factores contribuyentes → hipótesis de tratamiento.
+- Tono docente, conciso (3-5 frases).
+Devuelve SOLO JSON:
+{"respuesta":"tu intervención socrática",
+ "arbol":{
+   "br_estado":"pendiente|cribadas_negativas|br_presente",
+   "fuentes":[{"nombre":"…","probabilidad":"alta|media|baja","estado":"activa|descartada"}],
+   "factores":["factor identificado por el alumno"],
+   "hipotesis_tto":"hipótesis de tratamiento del alumno (si ya la ha formulado, vacío si no)"
+ },
+ "br_cribadas":true|false
+}
+"br_cribadas" = true solo si el alumno ha hecho preguntas de cribado de banderas rojas en la conversación.`;
+  const msgs=[{role:'system',content:sys}];
+  ST.dialogo.forEach(m=>{ if(m.rol==='alumno')msgs.push({role:'user',content:m.texto});
+    else if(m.rol==='tutor')msgs.push({role:'assistant',content:m.texto});
+    else if(m.rol==='test')msgs.push({role:'user',content:'[Test realizado] '+m.texto});
+    else if(m.rol==='br')msgs.push({role:'user',content:'[Cribado BR] '+m.texto}); });
+  const out=await openai(msgs,{json:true,temperature:0.5}); return JSON.parse(out);
+}
+
+/* ── Tests deterministas ── */
+function norm(s){ return s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim(); }
+async function resolverTest(peticion){ const c=ST.caso; const ck=norm(peticion); if(ST.cache[ck])return ST.cache[ck];
+  const items=(c.tests||[]).map((t,i)=>`[${i}] ${t.nombre}: ${t.resultado}`);
+  let idx=[]; if(items.length){ const sys=`Enrutador. Lista: ${items.join(' | ')}. Solicitud: "${peticion}". Devuelve SOLO JSON {"indices":[...]} con los índices que correspondan semánticamente. Si nada, {"indices":[]}.`;
+    try{ const p=JSON.parse(await openai([{role:'system',content:sys},{role:'user',content:peticion}],{json:true,temperature:0})); idx=(p.indices||[]).filter(i=>Number.isInteger(i)&&i>=0&&i<items.length); }catch(e){ idx=[]; } }
+  const txt=idx.length?idx.map(i=>`${c.tests[i].nombre}: ${c.tests[i].resultado}`).join('\n'):'Test no disponible en este caso o no aporta información relevante.';
+  ST.cache[ck]=txt; return txt; }
+
+/* ── Cribado de BRs (atajo del botón) ── */
+async function criBanderas(){
+  if(ST.running||ST.cerrado)return; const c=ST.caso;
+  const brPresentes=c.banderas_rojas&&c.banderas_rojas.filter(b=>b.presente);
+  let txt='Cribado de banderas rojas:\n';
+  (c.banderas_rojas||[]).forEach(b=>{ txt+=`- ${b.signo}: ${b.presente?'PRESENTE':'Negativo'}\n`; });
+  if(c.banderas_amarillas&&c.banderas_amarillas.length) txt+='Banderas amarillas: '+c.banderas_amarillas.map(b=>b.factor).join(', ');
+  pushMsg('br',txt); ST.br_cribadas=true; updateBRUI();
+  ST.running=true; typing(true);
+  try{ const r=await tutorTurn(); typing(false); pushMsg('tutor',r.respuesta||'…');
+    if(r.arbol){ ST.arbol=r.arbol; renderArbol(); }
+    if(brPresentes&&brPresentes.length) { const bm=el('div','msg br-msg'); const who=el('div','who'); who.textContent='⚠ BANDERA ROJA'; bm.appendChild(who); const b=el('div'); b.textContent=brPresentes.map(x=>x.signo).join(', '); bm.appendChild(b); $('#chat').appendChild(bm); scrollChat(); }
+    saveState(ST);
+  }catch(e){ typing(false); handleErr(e); } finally{ ST.running=false; }
+}
+
+/* ── Chat ── */
+function pushMsg(rol,texto,{save=true}={}){ if(save)ST.dialogo.push({rol,texto}); const chat=$('#chat');
+  if(rol==='sys'){ const m=el('div','msg sys'); m.textContent=texto; chat.appendChild(m); scrollChat(); return; }
+  const cls={alumno:'alumno',tutor:'tutor',test:'data',br:'data'}[rol]||'tutor';
+  const m=el('div','msg '+cls); const who=el('div','who'); who.textContent={alumno:'Tú',tutor:'Tutor',test:'Test',br:'Cribado BR'}[rol]||rol; m.appendChild(who);
+  const body=el('div'); body.textContent=texto; m.appendChild(body); chat.appendChild(m); scrollChat(); if(save)saveState(ST); }
+function scrollChat(){ const c=$('#chat'); c.scrollTop=c.scrollHeight; }
+function typing(on){ let t=$('#typing'); if(on){ if(!t){ t=el('div','typing'); t.id='typing'; t.innerHTML='<span class="dot"></span><span class="dot"></span><span class="dot"></span>'; $('#chat').appendChild(t);} scrollChat(); } else if(t)t.remove(); }
+function updateBRUI(){ const ok=ST.br_cribadas; $('#brAlert').style.display=(!ok&&ST.caso)?'block':'none'; $('#brOk').style.display=(ok&&ST.caso)?'block':'none'; }
+
+async function enviar(){ const inp=$('#inp'); const txt=inp.value.trim(); if(!txt||ST.running||ST.cerrado)return; inp.value=''; inp.style.height='44px';
+  pushMsg('alumno',txt); ST.running=true; $('#send').disabled=true; typing(true);
+  try{ const r=await tutorTurn(); typing(false); pushMsg('tutor',r.respuesta||'…');
+    if(r.arbol){ ST.arbol=r.arbol; renderArbol(); }
+    if(r.br_cribadas&&!ST.br_cribadas){ ST.br_cribadas=true; updateBRUI(); }
+    saveState(ST);
+  }catch(e){ typing(false); handleErr(e); } finally{ ST.running=false; $('#send').disabled=false; } }
+
+async function pedirTest(){ if(ST.running||ST.cerrado)return; const q=prompt('¿Qué test u exploración quieres realizar?'); if(!q||!q.trim())return;
+  pushMsg('alumno','🔎 '+q.trim()); ST.running=true; typing(true);
+  try{ const r=await resolverTest(q.trim()); typing(false); pushMsg('test',q.trim()+' → '+r);
+    const t=await tutorTurn(); pushMsg('tutor',t.respuesta||'…'); if(t.arbol){ ST.arbol=t.arbol; renderArbol(); }
+    if(t.br_cribadas&&!ST.br_cribadas){ ST.br_cribadas=true; updateBRUI(); } saveState(ST);
+  }catch(e){ typing(false); handleErr(e); } finally{ ST.running=false; } }
+
+/* ── Árbol de razonamiento ── */
+function renderArbol(){ const a=ST.arbol; if(!a){ return; } const box=$('#arbolBox');
+  const brEst=a.br_estado||'pendiente';
+  const brColor={pendiente:'pending',cribadas_negativas:'done',br_presente:'alert'}[brEst]||'pending';
+  const brLbl={pendiente:'⏳ Pendiente de cribar',cribadas_negativas:'✓ Sin banderas rojas',br_presente:'⚠ Bandera roja presente'}[brEst]||'—';
+  let html=`<div class="nodo"><div class="nh"><span class="nic">🚩</span><span class="nlbl ${brColor}">Banderas rojas</span></div><div class="nval">${brLbl}</div></div>`;
+  if(a.fuentes&&a.fuentes.length){
+    html+=`<div class="nodo"><div class="nh"><span class="nic">🔍</span><span class="nlbl ${a.fuentes.length?'done':'pending'}">Fuente de síntomas</span></div><div class="nval">`;
+    a.fuentes.forEach(f=>{ const cls=f.probabilidad==='alta'?'activa':f.probabilidad==='media'?'probable':'improbable'; html+=`<div class="fuente-item ${cls}"><span class="dot"></span><span class="fn">${f.nombre}</span><span class="fp">${f.estado||f.probabilidad}</span></div>`; }); html+='</div></div>'; }
+  if(a.factores&&a.factores.length){
+    html+=`<div class="nodo"><div class="nh"><span class="nic">⚙️</span><span class="nlbl done">Factores contribuyentes</span></div><div class="nval"><ul style="margin:0;padding-left:16px;font-size:13px;color:var(--muted)">${a.factores.map(f=>`<li>${f}</li>`).join('')}</ul></div></div>`; }
+  if(a.hipotesis_tto){
+    html+=`<div class="nodo"><div class="nh"><span class="nic">💡</span><span class="nlbl done">Hipótesis de tratamiento</span></div><div class="nval"><div class="htto">${a.hipotesis_tto}</div></div></div>`; }
+  box.innerHTML=html; }
+
+/* ── Debrief ── */
+async function cerrar(){ if(!ST.caso||ST.running)return;
+  const h=prompt('Tu hipótesis fisioterápica final\n(fuente de síntomas + enfoque de tratamiento):'); if(h===null)return;
+  ST.final=h.trim(); ST.cerrado=true; const btn=$('#closeBtn'); busy(btn,true,'Revelando…');
+  try{ const c=ST.caso; const transcript=ST.dialogo.map(m=>({'alumno':'ALUMNO',tutor:'TUTOR',test:'TEST',br:'CRIBADO BR',sys:'—'}[m.rol]||m.rol).toUpperCase()+': '+m.texto).join('\n');
+    const sys=`Eres tutor de Fisioterapia. El alumno cierra el caso con: "${h||'(no aportado)'}".
+Hipótesis correcta: ${c.hipotesis_fisio}. Plan esperado: ${c.plan_esperado}. Puntos de enseñanza: ${(c.puntos_ensenanza||[]).join('; ')}.
+BRs presentes: ${c.banderas_rojas&&c.banderas_rojas.some(b=>b.presente)?'SÍ — verifica si el alumno las identificó':'NO'}.
+Evalúa: acierto en hipótesis, calidad del cribado de BRs, identificación de factores contribuyentes y coherencia del plan.
+Devuelve SOLO JSON: {"acierto":"correcto|parcial|incorrecto","hipotesis_correcta":"…","explicacion":"…","cribado_br":"adecuado|insuficiente|innecesario","factores_destacados":["…"],"aciertos":["…"],"mejoras":["…"]}`;
+    const ev=await agente(sys, transcript, {json:true,temperature:0.3}); ST.debrief=ev; renderDebrief(ev);
+    $('#debriefPanel').style.display='block'; $('#debriefPanel').scrollIntoView({behavior:'smooth'});
+    ['#inp','#send','#testBtn','#brBtn','#closeBtn'].forEach(s=>{const e=$(s);if(e)e.disabled=true;}); saveState(ST);
+  }catch(e){ handleErr(e); } finally{ busy(btn,false); } }
+
+function renderDebrief(ev){ const c=ST.caso; const b=$('#debriefBody');
+  const vc={correcto:'#1E9E8A',parcial:'#D98A00',incorrecto:'#D9573F'}[ev.acierto]||'#5C7076';
+  const brBg={adecuado:'#DFF1ED',insuficiente:'#FBE7E2',innecesario:'#EEF2F1'}[ev.cribado_br]||'#EEF2F1';
+  const brColor={adecuado:'#0e6a5c',insuficiente:'#9a2f1a',innecesario:'#5C7076'}[ev.cribado_br]||'#5C7076';
+  b.innerHTML=`<div class="reveal">
+    <span style="font-size:12px;font-weight:700;padding:4px 11px;border-radius:20px;background:${vc}22;color:${vc};display:inline-block;margin-bottom:6px">Hipótesis: ${ev.acierto||'—'}</span>
+    <span style="font-size:12px;font-weight:700;padding:4px 11px;border-radius:20px;background:${brBg};color:${brColor};display:inline-block;margin-bottom:6px;margin-left:6px">BRs: ${ev.cribado_br||'—'}</span>
+    <div class="dx">${ev.hipotesis_correcta||c.hipotesis_fisio}</div>
+    ${ST.final?`<div style="font-size:13px;color:var(--muted)">Tu hipótesis: «${ST.final}»</div>`:''}
+    <div class="sub">Explicación</div><p style="margin:0;font-size:14.5px">${ev.explicacion||''}</p>
+    ${ev.factores_destacados&&ev.factores_destacados.length?`<div class="sub">Factores clave</div><ul>${ev.factores_destacados.map(x=>`<li>${x}</li>`).join('')}</ul>`:''}
+    ${ev.aciertos&&ev.aciertos.length?`<div class="sub">Puntos fuertes</div><ul>${ev.aciertos.map(x=>`<li>${x}</li>`).join('')}</ul>`:''}
+    ${ev.mejoras&&ev.mejoras.length?`<div class="sub">A mejorar</div><ul>${ev.mejoras.map(x=>`<li>${x}</li>`).join('')}</ul>`:''}
+    <div class="sub">Puntos de enseñanza</div><ul>${(c.puntos_ensenanza||[]).map(x=>`<li>${x}</li>`).join('')}</ul>
+  </div>`;
+  const tb=el('div','toolbar'); tb.innerHTML='<button class="btn btn-primary" id="dlW">⬇ Word</button><button class="btn btn-ghost" id="dlP">⬇ PDF</button><button class="btn btn-line" id="againBtn">↺ Otro caso</button>';
+  b.appendChild(tb); $('#dlW').onclick=()=>dlWord('razonamiento_fisio',blocks(ev)); $('#dlP').onclick=()=>dlPDF('razonamiento_fisio',blocks(ev)); $('#againBtn').onclick=resetAll; }
+
+function blocks(ev){ const c=ST.caso;
+  return [{h1:'Razonamiento Fisioterápico — Debrief'},
+    {kv:[['Hipótesis correcta',ev.hipotesis_correcta||c.hipotesis_fisio],['Acierto alumno',ev.acierto||'—'],['Cribado BRs',ev.cribado_br||'—']]},
+    {h3:'Presentación'},{p:c.presentacion},
+    {h3:'Explicación'},{p:ev.explicacion||''},
+    ...(ev.factores_destacados?[{h3:'Factores contribuyentes'},{bullets:ev.factores_destacados}]:[]),
+    {h3:'Plan esperado'},{p:c.plan_esperado||''},
+    ...(ev.aciertos?[{h3:'Puntos fuertes'},{bullets:ev.aciertos}]:[]),
+    ...(ev.mejoras?[{h3:'A mejorar'},{bullets:ev.mejoras}]:[]),
+    {h3:'Puntos de enseñanza'},{bullets:c.puntos_ensenanza||[]}]; }
+
+/* ── Init / reset ── */
+async function iniciar(){ banner(''); const key=$('#apiKey').value.trim(); if(!key){ banner('Introduce tu API Key en «Ajustes avanzados».','info'); return; }
+  const btn=$('#genBtn'); busy(btn,true,'Generando caso…');
+  try{ const c=await generarCaso(); ST={caso:c,dialogo:[],arbol:null,br_cribadas:false,running:false,cache:{},cerrado:false,final:''};
+    $('#setupPanel').style.display='none'; $('#casePanel').style.display='block'; $('#debriefPanel').style.display='none';
+    $('#caseTitle').textContent=c.titulo||'Caso'; $('#present').innerHTML=`<h4>Presentación</h4>${c.presentacion}`;
+    $('#chat').innerHTML=''; renderArbol(); updateBRUI();
+    pushMsg('sys','Analiza la presentación. Recuerda: empieza siempre cribando banderas rojas.',{save:false});
+    ST.running=true; typing(true);
+    try{ const r=await tutorTurn(); typing(false); pushMsg('tutor',r.respuesta||'…'); if(r.arbol){ ST.arbol=r.arbol; renderArbol(); } }
+    finally{ ST.running=false; }
+    saveState(ST);
+  }catch(e){ handleErr(e); } finally{ busy(btn,false); } }
+
+function resetAll(){ ST={caso:null,dialogo:[],arbol:null,br_cribadas:false,running:false,cache:{},cerrado:false,final:''}; localStorage.removeItem(K_STATE);
+  $('#chat').innerHTML=''; $('#arbolBox').innerHTML='<div style="color:var(--muted);font-size:13px">El árbol se construirá aquí a medida que avances.</div>';
+  $('#debriefPanel').style.display='none'; $('#casePanel').style.display='none'; $('#setupPanel').style.display='block';
+  ['#inp','#send','#testBtn','#brBtn','#closeBtn'].forEach(s=>{const e=$(s);if(e)e.disabled=false;});
+  $('#brAlert').style.display='none'; $('#brOk').style.display='none'; window.scrollTo({top:0,behavior:'smooth'}); }
+
+/* ── INIT ── */
+window.addEventListener('DOMContentLoaded',()=>{
+  loadCfg();
+  $('#apiKey').addEventListener('change',saveCfg); $('#model').addEventListener('change',saveCfg);
+  $('#genBtn').onclick=iniciar; $('#send').onclick=enviar; $('#testBtn').onclick=pedirTest;
+  $('#brBtn').onclick=criBanderas; $('#closeBtn').onclick=cerrar;
+  $('#resetBtn').onclick=()=>{ if(confirm('¿Descartar este caso?')) resetAll(); };
+  const inp=$('#inp'); inp.addEventListener('keydown',e=>{ if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); enviar(); }});
+  inp.addEventListener('input',()=>{ inp.style.height='44px'; inp.style.height=Math.min(inp.scrollHeight,130)+'px'; });
+  const prev=loadState();
+  if(prev&&prev.caso){ ST=prev; $('#setupPanel').style.display='none'; $('#casePanel').style.display='block';
+    $('#caseTitle').textContent=prev.caso.titulo||'Caso'; $('#present').innerHTML=`<h4>Presentación</h4>${prev.caso.presentacion}`;
+    $('#chat').innerHTML=''; prev.dialogo.forEach(m=>pushMsg(m.rol,m.texto,{save:false}));
+    if(prev.arbol) renderArbol(); updateBRUI();
+    if(prev.cerrado&&prev.debrief){ renderDebrief(prev.debrief); $('#debriefPanel').style.display='block'; ['#inp','#send','#testBtn','#brBtn','#closeBtn'].forEach(s=>{const e=$(s);if(e)e.disabled=true;}); } }
+});
+</script>
+</body>
+</html>
